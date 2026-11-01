@@ -9,6 +9,11 @@
   var WHATSAPP_NUMBER = '0000000000';
   var WHATSAPP_MESSAGE = 'Hi Growvia, I would like to discuss a project.';
 
+  // Google Sheets Apps Script Web App URL:
+  // 1. Follow GOOGLE_SHEETS_SETUP.md to deploy your Google Apps Script (from google-apps-script.js)
+  // 2. Paste the deployed Web App URL below (e.g. 'https://script.google.com/macros/s/.../exec')
+  var GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxY08Ha7ZSwGkn7R_cvuoSYTPtWuSwqEfjM8OPxNhd6EF7A4M28MP-cCQ2aPP61coYqLg/exec';
+
   var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ---------- Helpers ---------- */
@@ -389,9 +394,21 @@
     });
   });
 
-  /* ---------- Contact form ---------- */
+  /* ---------- Contact form (Google Sheets integration) ---------- */
   var form = $('#inquiryForm');
   var success = $('#formSuccess');
+  var formError = $('#formError');
+  var submitBtn = $('#submitBtn');
+  var submitBtnText = submitBtn ? $('.btn-text', submitBtn) : null;
+  var submitBtnSpinner = submitBtn ? $('.btn-spinner', submitBtn) : null;
+
+  function setSubmitting(isSubmitting) {
+    if (!submitBtn) return;
+    submitBtn.disabled = isSubmitting;
+    submitBtn.classList.toggle('loading', isSubmitting);
+    if (submitBtnSpinner) submitBtnSpinner.hidden = !isSubmitting;
+    if (submitBtnText) submitBtnText.textContent = isSubmitting ? 'Sending...' : 'Send Inquiry';
+  }
 
   var rules = {
     name: function (v) {
@@ -432,21 +449,71 @@
 
   form.addEventListener('submit', function (e) {
     e.preventDefault();
+    if (formError) formError.hidden = true;
+
     var firstInvalid = null;
     Object.keys(rules).forEach(function (name) {
       if (!validateField(name) && !firstInvalid) firstInvalid = form.elements[name];
     });
     if (firstInvalid) { firstInvalid.focus(); return; }
 
-    // No backend connected: show an honest success state only.
-    // To send real inquiries, post the form data to a form service here.
-    success.hidden = false;
-    $('#formReset').focus();
+    // If GOOGLE_SHEET_URL is not yet configured, show a reminder and run in preview mode
+    if (!GOOGLE_SHEET_URL || !GOOGLE_SHEET_URL.trim() || GOOGLE_SHEET_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL') {
+      showToast('Connect Google Sheets: add your Apps Script Web App URL to GOOGLE_SHEET_URL in script.js.');
+      success.hidden = false;
+      $('#formReset').focus();
+      return;
+    }
+
+    // Check if the user accidentally copied a Library URL or Project URL instead of a Web App URL
+    if (GOOGLE_SHEET_URL.indexOf('/macros/library/') !== -1) {
+      showToast('Invalid URL: You copied a Library URL. Please Deploy as "Web app" (must end with /exec).');
+      console.error('GOOGLE_SHEET_URL error: You pasted a Library URL. It must be a Web App URL ending in /exec. See GOOGLE_SHEETS_SETUP.md');
+      return;
+    }
+    if (GOOGLE_SHEET_URL.indexOf('/macros/s/') === -1 || GOOGLE_SHEET_URL.indexOf('/exec') === -1) {
+      showToast('Invalid URL format: Google Web App URL should look like https://script.google.com/macros/s/.../exec');
+      console.warn('GOOGLE_SHEET_URL warning: Your URL does not match the standard Google Apps Script Web App format ending in /exec.');
+    }
+
+    setSubmitting(true);
+
+    var formData = new FormData(form);
+    // Include formatted submission timestamp
+    formData.append('submittedAt', new Date().toLocaleString());
+
+    var params = new URLSearchParams();
+    formData.forEach(function (value, key) {
+      params.append(key, value);
+    });
+
+    fetch(GOOGLE_SHEET_URL, {
+      method: 'POST',
+      body: params,
+      mode: 'no-cors'
+    })
+    .then(function () {
+      setSubmitting(false);
+      form.reset();
+      $$('.field', form).forEach(function (f) { f.classList.remove('invalid'); });
+      if (formError) formError.hidden = true;
+      success.hidden = false;
+      $('#formReset').focus();
+    })
+    .catch(function (err) {
+      setSubmitting(false);
+      console.error('Inquiry submission error:', err);
+      if (formError) {
+        formError.hidden = false;
+      }
+      showToast('Could not send inquiry. Please try again or reach out directly.');
+    });
   });
 
   $('#formReset').addEventListener('click', function () {
     form.reset();
     $$('.field', form).forEach(function (f) { f.classList.remove('invalid'); });
+    if (formError) formError.hidden = true;
     success.hidden = true;
     form.elements.name.focus();
   });
