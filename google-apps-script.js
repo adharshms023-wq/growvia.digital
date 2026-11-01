@@ -31,7 +31,7 @@ var CONFIG = {
   // Set to true to receive an email alert whenever an inquiry is submitted
   SEND_EMAIL_NOTIFICATION: false,
   // Where to receive the email notification
-  NOTIFICATION_EMAIL: 'your-email@example.com',
+  NOTIFICATION_EMAIL: 'aarshuu777@gmail.com',
   // Tab name in the Google Sheet (leave empty to use the first/active sheet)
   SHEET_NAME: 'Inquiries'
 };
